@@ -1,0 +1,272 @@
+---
+title: "SAM_Composite"
+author: "Amy Hessl"
+date: "4/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ncdf4)
+library(raster)
+library(lubridate)
+library(ggplot2)
+library(lattice)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rasterVis)
+library(viridis)
+library(seas)
+library(s2dverification)
+library(reshape2)
+library(dplyr)
+```
+
+### Data Download from ECHAM5‐wiso (monthly, 1 degree grid)
+https://zenodo.org/record/1249604#.XpnVbFNKhTZ
+
+Data sources, years, extent (could be variables in function call someday)
+```{r}
+netcdf.file <- "data/d18O_precip_mon_1871_2011.nc"
+
+F_yr <- 1958
+L_yr <- 2011
+years <- seq(F_yr, L_yr)
+ext <- extent(143.5, 148.6, -43.8, -39.5) #tas extent (lon_min, lon_max, lat_min, lat_max)
+#ext <- extent(0, 180, -90, 0) #SH extent
+```
+
+Get a list of the variables to choose from and confirm that the time 
+origin and units are appropriate......
+```{r}
+nc <- ncdf4::nc_open(netcdf.file)
+
+#select the variable
+var.name <- names(nc[['var']])[1] #be sure this is the value you want
+
+summary(nc$dim$lon$vals) #if longitude is 0-360 needs to be rotated
+tunits <- ncdf4::ncatt_get(nc, "time", "units")
+print(tunits)
+
+ncdf4::nc_close(nc)
+```
+
+Rotate because the extent is 0-360 not 0-180 (takes a while)
+```{r}
+dat <- rotate(brick(netcdf.file, varname= var.name))
+```
+
+Crop to spatial extent for faster processessing
+```{r}
+datC <- crop(dat, ext)
+```
+
+
+### Composite Analysis on SAM
+Extract Particular Years/Months from datC (climate raster brick)
+
+datY
+```{r}
+sel_y <- names(datC)[substr(names(datC), 2, 5) %in% years] 
+#use that index to subset the raster brick
+datY <- subset(datC, sel_y, value=T)
+tail(names(datY), 30) 
+```
+
+###Need to create a seasonal mean for SAM to match 
+Read in Marshall SAM data and subset to period, extract 10 highest/lowest
+Change to 95th percentile or 90th percentile using quantile()
+Create a montly seasonal mean for SAM 
+Make a factor
+
+
+Monthly (Needs edit):
+Wide -> long
+Month as a column
+If m > 9, year = year + 1
+Factor by month into new years
+```{r}
+sam <- read.table("data/marshallSamMon.txt")
+```
+
+```{r}
+sam$year <- as.numeric(rownames(sam))
+```
+
+
+```{r}
+sam_long <- melt(sam, id.vars = "year")
+sam_ordered <- sam_long[order(sam_long$year), ]
+sam_ordered$month <- c(1:12)
+```
+
+```{r}
+for (x in 1:nrow(sam_ordered)){
+if (sam_ordered[x,4] > 9) {
+  sam_ordered[x,1] <- (sam_ordered[x,1] + 1)
+}
+}
+```
+
+Create annual values from new years:
+
+```{r}
+sam_ANN <- sam_ordered %>% group_by(year) %>% summarise(ANN = mean(value))
+sam_ANN <- as.data.frame(sam_ANN)
+sam_ANN
+```
+
+Extract only the growing season:
+
+```{r}
+sam_GRO <- sam_ordered %>% filter(month > 9 | month < 3) %>% group_by(year) %>% summarise(ANN = mean(value))
+sam_GRO <- as.data.frame(sam_GRO)
+sam_GRO
+```
+
+Growing season top quantiles:
+```{r}
+samY <- sam_GRO[sam_GRO$year %in% years, ]
+
+spN <- samY[samY$ANN < (quantile(samY$ANN, 0.1)),] #bottom 10% growing season SAM
+spP <- samY[samY$ANN > (quantile(samY$ANN, 0.9)),] #top 10% growing season SAM
+
+#create a logical index for selecting positive and negative SAM years
+spN.i <- years %in% spN$year
+spP.i <- years %in% spP$year
+```
+
+```{r}
+spP.i
+```
+
+
+### Better to look at the growing season, rather than calendar year
+First create a factor for growth.years where growth.year begins in Oct previous year and runs through Sept of same year. CHANGE THIS TO MEAN OF DEC-FEB? 
+```{r}
+st.mon <- "10"  
+yr_mo_dy <- substr(names(datY), 2, 11)
+d <- as.Date(gsub(".", '/', yr_mo_dy, fixed = T)) 
+start <- paste0(min(substr(names(datY), 2, 5)),"-", st.mon, "-15")
+grow.years <- mkann(d, as.Date(start)) #an index of the growing season years.  note first and last are incomplete as is last year.
+```
+
+Before Oct or after Feb = 0
+Not an NA when month(d) = 10,11,12,1,2
+```{r}
+gsmonths = c(3,4,5,6,7,8,9)
+gsmonths.i <- month(d) %in% gsmonths
+grow.years[gsmonths.i] <- NA
+grow.years
+```
+
+
+use this factor to create means by growth.year
+```{r}
+datX <- stackApply(datY, indices=grow.years, fun=mean, na.rm=TRUE) 
+datB <- dropLayer(datX, "level_NA") #remove the layer of NAs
+#note layer names of datB
+head(names(datB))
+```
+
+```{r}
+datB
+```
+
+
+Composite function needs an array
+```{r}
+datA <- as.array(datB)
+dim(datA)
+```
+
+```{r}
+datA
+```
+
+
+First year is 1957-58 but no data for 1957, so cut it
+```{r}
+datZ <- datA[, , -1]
+```
+Make sure it worked:
+```{r}
+datA[,,c(1:3)]
+datZ[,,c(1:3)]
+```
+
+
+Composite
+```{r}
+samNC <- Composite(datZ, occ=spN.i)
+samPC <- Composite(datZ, occ=spP.i)
+```
+
+########
+Convert the resulting arrays into raster object with same specifications as datY
+
+
+```{r}
+samPCr <- raster(samPC$composite[,,1], xmn=143.4375 , xmx=149.0625 , ymn=-43.7298 , ymx=-39.24469 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+```
+
+```{r}
+samNCr <- raster(samNC$composite[,,1], xmn=143.4375 , xmx=149.0625 , ymn=-43.7298 , ymx=-39.24469 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+```
+
+```{r}
+samOut <- stack(samPCr, samNCr)
+```
+
+```{r}
+coasts <- ne_coastline(scale=50, "sp")
+coasts <- crop(coasts, ext)
+levelplot(samOut, colorkey=list(title="Pos, Neg Anom", space="bottom"), margin=TRUE, 
+          names.attr=names(samOut),     par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
+   layer(sp.polygons(coasts, lwd=1)) 
+```
+
+
+Next step: Mask out composite values that have p-values that are insignificant
+
+
+
+
+NEEDS FIXING:
+
+```{r}
+samPC.p <- raster(samPC$pvalue[,,1], xmn=143.4375 , xmx=149.0625 , ymn=-43.7298 , ymx=-39.24469 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+samNC.p <- raster(samNC$pvalue[,,1], xmn=143.4375 , xmx=149.0625 , ymn=-43.7298 , ymx=-39.24469 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+```
+
+
+```{r}
+samPC.p[samPC.p > 0.05] <- NA #mask out insignificant values
+samNC.p[samNC.p > 0.05] <- NA
+masked.p <- raster::mask(samPCr, samPC.p)
+masked.n <- raster::mask(samNCr, samNC.p)
+```
+
+
+```{r}
+samMask <- stack(masked.p, masked.n)
+```
+
+```{r}
+coasts <- ne_coastline(scale=50, "sp")
+coasts <- crop(coasts, ext)
+levelplot(samMask, colorkey=list(title="Pos, Neg Anom", space="bottom"), margin=TRUE, 
+          names.attr=names(samMask),     par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
+   layer(sp.polygons(coasts, lwd=1)) 
+```
+
+
+Other steps: 
+Do for southern hemisphere. Change extent at the top
+Rotate will be slow. Stackapply will be slow. Maybe do on lab computer
+
+
