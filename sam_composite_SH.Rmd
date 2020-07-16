@@ -26,7 +26,7 @@ library(dplyr)
 https://zenodo.org/record/1249604#.XpnVbFNKhTZ
 
 Data sources, years, extent (could be variables in function call someday)
-SH extent creates scale issues when Antarctica is included. Extent is changed to -60/-50 instead of -90
+SH extent can be changed to include pacific ocean, etc
 ```{r}
 netcdf.file <- "data/d18O_precip_mon_1871_2011.nc"
 
@@ -76,16 +76,8 @@ tail(names(datY), 30)
 
 ###Need to create a seasonal mean for SAM to match 
 Read in Marshall SAM data and subset to period, extract 10 highest/lowest
-Change to 95th percentile or 90th percentile using quantile()
-Create a montly seasonal mean for SAM 
-Make a factor
 
-
-Monthly (Needs edit):
-Wide -> long
-Month as a column
-If m > 9, year = year + 1
-Factor by month into new years
+Monthly:
 ```{r}
 sam <- read.table("data/marshallSamMon.txt")
 ```
@@ -125,7 +117,13 @@ sam_GRO <- as.data.frame(sam_GRO)
 sam_GRO
 ```
 
-Growing season top quantiles:
+Extract by seasons (JJA/SON/DJF/MAM):
+```{r}
+
+```
+
+
+Growing season top quantiles (change for different seasons):
 ```{r}
 samY <- sam_GRO[sam_GRO$year %in% years, ]
 
@@ -143,7 +141,7 @@ spP.i
 
 
 ### Better to look at the growing season, rather than calendar year
-First create a factor for growth.years where growth.year begins in Oct previous year and runs through Sept of same year. CHANGE THIS TO MEAN OF DEC-FEB? 
+First create a factor for growth.years where growth.year begins in Oct previous year and runs through Sept of same year.
 ```{r}
 st.mon <- "10"  
 yr_mo_dy <- substr(names(datY), 2, 11)
@@ -154,6 +152,7 @@ grow.years <- mkann(d, as.Date(start)) #an index of the growing season years.  n
 
 Before Oct or after Feb = 0
 Not an NA when month(d) = 10,11,12,1,2
+*Change this for seasons that you're looking at*
 ```{r}
 gsmonths = c(3,4,5,6,7,8,9)
 gsmonths.i <- month(d) %in% gsmonths
@@ -200,7 +199,7 @@ samPC <- Composite(datZ, occ=spP.i)
 ```
 
 ########
-Convert the resulting arrays into raster object with same specifications as datY
+Convert the resulting arrays into raster object with same specifications as datY (if the extent is changed at the top, it should be changed here too)
 
 
 ```{r}
@@ -226,9 +225,6 @@ levelplot(samOut, colorkey=list(title="Pos, Neg Anom", space="bottom"), margin=T
 
 Next step: Mask out composite values that have p-values that are insignificant
 
-
-
-NEEDS FIXING:
 
 ```{r}
 samPC.p <- raster(samPC$pvalue[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
