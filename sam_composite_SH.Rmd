@@ -189,7 +189,6 @@ datZ <- datA[, , -1]
 ```
 Make sure it worked:
 ```{r}
-datA[,,c(1:3)]
 datZ[,,c(1:3)]
 ```
 
@@ -198,6 +197,8 @@ Composite
 ```{r}
 samNC <- Composite(datZ, occ=spN.i)
 samPC <- Composite(datZ, occ=spP.i)
+anomN <- (samNC$composite[,,1] - Mean1Dim(datZ, 3))
+anomP <- (samNC$composite[,,1] - Mean1Dim(datZ, 3))
 ```
 
 ########
@@ -205,11 +206,11 @@ Convert the resulting arrays into raster object with same specifications as datY
 
 
 ```{r}
-samPCr <- raster(samPC$composite[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+samPCr <- raster(anomP, xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 ```
 
 ```{r}
-samNCr <- raster(samNC$composite[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+samNCr <- raster(anomN, xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 ```
 
 ```{r}
