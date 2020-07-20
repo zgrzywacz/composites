@@ -1,6 +1,8 @@
 ---
 title: "sam_composite_SH"
 output: html_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 
@@ -119,13 +121,15 @@ sam_GRO
 
 Extract by seasons (JJA/SON/DJF/MAM):
 ```{r}
-
+sam_DJF <- sam_ordered %>% filter(month > 11 | month < 3) %>% group_by(year) %>% summarise(ANN = mean(value))
+sam_DJF <- as.data.frame(sam_DJF)
+sam_DJF
 ```
 
 
 Growing season top quantiles (change for different seasons):
 ```{r}
-samY <- sam_GRO[sam_GRO$year %in% years, ]
+samY <- sam_DJF[sam_DJF$year %in% years, ]
 
 spN <- samY[samY$ANN < (quantile(samY$ANN, 0.1)),] #bottom 10% growing season SAM
 spP <- samY[samY$ANN > (quantile(samY$ANN, 0.9)),] #top 10% growing season SAM
@@ -154,7 +158,7 @@ Before Oct or after Feb = 0
 Not an NA when month(d) = 10,11,12,1,2
 *Change this for seasons that you're looking at*
 ```{r}
-gsmonths = c(3,4,5,6,7,8,9)
+gsmonths = c(3,4,5,6,7,8,9,10,11)
 gsmonths.i <- month(d) %in% gsmonths
 grow.years[gsmonths.i] <- NA
 ```
@@ -212,14 +216,17 @@ samNCr <- raster(samNC$composite[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="
 
 ```{r}
 samOut <- stack(samPCr, samNCr)
+names(samOut) <- c("Positive", "Negative")
 ```
 
 ```{r}
 coasts <- ne_coastline(scale=50, "sp")
 coasts <- crop(coasts, ext)
-levelplot(samOut, colorkey=list(title="Pos, Neg Anom", space="bottom"), margin=TRUE, 
-          names.attr=names(samOut),     par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
+jpeg("sam_DJF.jpg")
+levelplot(samOut, colorkey=list(space = "bottom"), margin=TRUE, 
+          names.attr=names(samOut), main="SAM Summer (DJF) Anomalies",    par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
    layer(sp.polygons(coasts, lwd=1)) 
+dev.off()
 ```
 
 
@@ -231,10 +238,10 @@ samPC.p <- raster(samPC$pvalue[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+p
 samNC.p <- raster(samNC$pvalue[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 ```
 
-
+Significance is 0.1 
 ```{r}
-samPC.p[samPC.p > 0.05] <- NA #mask out insignificant values
-samNC.p[samNC.p > 0.05] <- NA
+samPC.p[samPC.p > 0.1] <- NA #mask out insignificant values
+samNC.p[samNC.p > 0.1] <- NA
 masked.p <- raster::mask(samPCr, samPC.p)
 masked.n <- raster::mask(samNCr, samNC.p)
 ```
@@ -242,13 +249,16 @@ masked.n <- raster::mask(samNCr, samNC.p)
 
 ```{r}
 samMask <- stack(masked.p, masked.n)
+names(samMask) <- c("Positive", "Negative")
 ```
 
 ```{r}
 coasts <- ne_coastline(scale=50, "sp")
 coasts <- crop(coasts, ext)
-levelplot(samMask, colorkey=list(title="Pos, Neg Anom", space="bottom"), margin=TRUE, 
-          names.attr=names(samMask),     par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
+jpeg("sam_DJF_Mask.jpg")
+levelplot(samMask, colorkey=list(space="bottom"), margin=TRUE, 
+          names.attr=names(samMask), main="Masked SAM Summer (DJF) Anomalies",  par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
    layer(sp.polygons(coasts, lwd=1)) 
+dev.off()
 ```
 
