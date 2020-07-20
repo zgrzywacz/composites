@@ -93,9 +93,7 @@ sam$year <- as.numeric(rownames(sam))
 sam_long <- melt(sam, id.vars = "year")
 sam_ordered <- sam_long[order(sam_long$year), ]
 sam_ordered$month <- c(1:12)
-```
 
-```{r}
 for (x in 1:nrow(sam_ordered)){
 if (sam_ordered[x,4] > 9) {
   sam_ordered[x,1] <- (sam_ordered[x,1] + 1)
@@ -260,5 +258,79 @@ levelplot(samMask, colorkey=list(space="bottom"), margin=TRUE,
           names.attr=names(samMask), main="Masked SAM Summer (DJF) Anomalies",  par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
    layer(sp.polygons(coasts, lwd=1)) 
 dev.off()
+```
+
+ENSO Data
+**Make this its own rmd
+**Change extent to include pacific
+**Change seasons
+
+```{r}
+getwd()
+```
+
+
+```{r}
+enso <- read.table("data/enso4")
+```
+
+```{r}
+enso$year <- as.numeric(rownames(enso))
+```
+
+
+```{r}
+enso_long <- melt(enso, id.vars = "year")
+enso_ordered <- enso_long[order(enso_long$year), ]
+enso_ordered$month <- c(1:12)
+
+for (x in 1:nrow(enso_ordered)){
+if (enso_ordered[x,4] > 9) {
+  enso_ordered[x,1] <- (enso_ordered[x,1] + 1)
+}
+}
+```
+
+```{r}
+enso_DJF <- enso_ordered %>% filter(month > 11 | month < 3) %>% group_by(year) %>% summarise(ANN = mean(value))
+enso_DJF <- as.data.frame(enso_DJF)
+enso_DJF
+```
+
+```{r}
+ensoY <- enso_DJF[enso_DJF$year %in% years, ]
+
+epN <- ensoY[ensoY$ANN < (quantile(ensoY$ANN, 0.1)),] #bottom 10% growing season ENSO
+epP <- ensoY[ensoY$ANN > (quantile(ensoY$ANN, 0.9)),] #top 10% growing season ENSO
+
+#create a logical index for selecting positive and negative ENSO years
+epN.i <- years %in% epN$year
+epP.i <- years %in% epP$year
+```
+
+```{r}
+ensoNC <- Composite(datZ, occ=epN.i)
+ensoPC <- Composite(datZ, occ=epP.i)
+```
+
+```{r}
+ensoPCr <- raster(ensoPC$composite[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+```
+
+```{r}
+ensoNCr <- raster(ensoNC$composite[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+```
+
+```{r}
+ensoOut <- stack(ensoPCr, ensoNCr)
+names(ensoOut) <- c("Positive", "Negative")
+```
+
+```{r}
+coasts <- ne_coastline(scale=50, "sp")
+coasts <- crop(coasts, ext)
+levelplot(ensoOut, colorkey=list(space = "bottom"), margin=TRUE, 
+          names.attr=names(ensoOut), main="ENSO Summer (DJF) Anomalies",    par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
+   layer(sp.polygons(coasts, lwd=1)) 
 ```
 
