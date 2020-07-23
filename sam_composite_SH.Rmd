@@ -29,13 +29,14 @@ https://zenodo.org/record/1249604#.XpnVbFNKhTZ
 
 Data sources, years, extent (could be variables in function call someday)
 SH extent can be changed to include pacific ocean, etc
+***Question for Amy - unrotate to make extent include Pacific?
 ```{r}
 netcdf.file <- "data/d18O_precip_mon_1871_2011.nc"
 
 F_yr <- 1958
 L_yr <- 2011
 years <- seq(F_yr, L_yr)
-ext <- extent(0, 180, -90, 0) #tas extent (lon_min, lon_max, lat_min, lat_max)
+ext <- extent(-180, 180, -90, 0) #tas extent (lon_min, lon_max, lat_min, lat_max)
 #ext <- extent(0, 180, -90, 0) #SH extent
 ```
 
@@ -155,8 +156,9 @@ grow.years <- mkann(d, as.Date(start)) #an index of the growing season years.  n
 Before Oct or after Feb = 0
 Not an NA when month(d) = 10,11,12,1,2
 *Change this for seasons that you're looking at*
+NOTE: This will affect the needed length of composite occ
 ```{r}
-gsmonths = c(3,4,5,6,7,8,9,10,11)
+gsmonths = c(1,2,3,4,5,6,7,8,12)
 gsmonths.i <- month(d) %in% gsmonths
 grow.years[gsmonths.i] <- NA
 ```
@@ -171,7 +173,7 @@ head(names(datB))
 ```
 
 ```{r}
-datB
+names(datB)
 ```
 
 
@@ -292,6 +294,8 @@ if (enso_ordered[x,4] > 9) {
 }
 ```
 
+Seasons:
+
 ```{r}
 enso_DJF <- enso_ordered %>% filter(month > 11 | month < 3) %>% group_by(year) %>% summarise(ANN = mean(value))
 enso_DJF <- as.data.frame(enso_DJF)
@@ -299,8 +303,36 @@ enso_DJF
 ```
 
 ```{r}
-ensoY <- enso_DJF[enso_DJF$year %in% years, ]
+enso_MAM <- enso_ordered %>% filter(month > 2 & month < 6) %>% group_by(year) %>% summarise(ANN = mean(value))
+enso_MAM <- as.data.frame(enso_MAM)
+enso_MAM
+```
 
+```{r}
+enso_JJA <- enso_ordered %>% filter(month > 5 & month < 9) %>% group_by(year) %>% summarise(ANN = mean(value))
+enso_JJA <- as.data.frame(enso_JJA)
+enso_JJA
+```
+
+```{r}
+enso_SON <- enso_ordered %>% filter(month > 8 & month < 12) %>% group_by(year) %>% summarise(ANN = mean(value))
+enso_SON <- as.data.frame(enso_SON)
+enso_SON
+```
+
+*Change this for the season:*
+
+```{r}
+ensoY <- enso_SON[enso_SON$year %in% years, ]
+```
+ONLY RUN THIS IF MAM OR JJA
+```{r}
+ensoY <- ensoY[-54,]
+nrow(ensoY)
+```
+
+
+```{r}
 epN <- ensoY[ensoY$ANN < (quantile(ensoY$ANN, 0.1)),] #bottom 10% growing season ENSO
 epP <- ensoY[ensoY$ANN > (quantile(ensoY$ANN, 0.9)),] #top 10% growing season ENSO
 
@@ -309,17 +341,27 @@ epN.i <- years %in% epN$year
 epP.i <- years %in% epP$year
 ```
 
+ONLY RUN IF MAM OR JJA
+
+```{r}
+epN.i <- epN.i[-54]
+epP.i <- epP.i[-54]
+```
+
+
 ```{r}
 ensoNC <- Composite(datZ, occ=epN.i)
 ensoPC <- Composite(datZ, occ=epP.i)
+enso_anomN <- (ensoNC$composite[,,1] - Mean1Dim(datZ, 3))
+enso_anomP <- (ensoNC$composite[,,1] - Mean1Dim(datZ, 3))
 ```
 
 ```{r}
-ensoPCr <- raster(ensoPC$composite[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+ensoPCr <- raster(enso_anomP, xmn=-180, xmx=180, ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 ```
 
 ```{r}
-ensoNCr <- raster(ensoNC$composite[,,1], xmn=0 , xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+ensoNCr <- raster(enso_anomN, xmn=-180, xmx=180, ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 ```
 
 ```{r}
@@ -327,11 +369,43 @@ ensoOut <- stack(ensoPCr, ensoNCr)
 names(ensoOut) <- c("Positive", "Negative")
 ```
 
+Change title for season:
+
 ```{r}
 coasts <- ne_coastline(scale=50, "sp")
 coasts <- crop(coasts, ext)
+jpeg("enso_SON.jpg")
 levelplot(ensoOut, colorkey=list(space = "bottom"), margin=TRUE, 
-          names.attr=names(ensoOut), main="ENSO Summer (DJF) Anomalies",    par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
+          names.attr=names(ensoOut), main="ENSO Spring (SON) Anomalies",    par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
    layer(sp.polygons(coasts, lwd=1)) 
+dev.off()
 ```
 
+```{r}
+ensoPC.p <- raster(ensoPC$pvalue[,,1], xmn=-180, xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+ensoNC.p <- raster(ensoNC$pvalue[,,1], xmn=-180, xmx=180 , ymn=-90 , ymx=0 , crs="+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+```
+
+Significance is 0.1 
+```{r}
+ensoPC.p[ensoPC.p > 0.1] <- NA #mask out insignificant values
+ensoNC.p[ensoNC.p > 0.1] <- NA
+e.masked.p <- raster::mask(ensoPCr, ensoPC.p)
+e.masked.n <- raster::mask(ensoNCr, ensoNC.p)
+```
+
+
+```{r}
+ensoMask <- stack(e.masked.p, e.masked.n)
+names(ensoMask) <- c("Positive", "Negative")
+```
+
+```{r}
+coasts <- ne_coastline(scale=50, "sp")
+coasts <- crop(coasts, ext)
+jpeg("enso_SON_mask.jpg")
+levelplot(ensoMask, colorkey=list(space="bottom"), margin=TRUE, 
+          names.attr=names(ensoMask), main="Masked ENSO Spring (SON) Anomalies",  par.settings=rasterTheme(viridis_pal(option = "D")(255))) + 
+   layer(sp.polygons(coasts, lwd=1)) 
+dev.off()
+```
