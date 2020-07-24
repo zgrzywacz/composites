@@ -1,0 +1,74 @@
+---
+title: "isotope composites"
+output: html_document
+---
+
+Load in isotope data
+Download ECHAM5-wiso parameters you want
+https://zenodo.org/record/1249604#.XpnVbFNKhTZ
+
+```{r}
+library(ncdf4)
+library(raster)
+library(lubridate)
+library(ggplot2)
+library(lattice)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rasterVis)
+library(viridis)
+library(seas)
+library(s2dverification)
+library(reshape2)
+library(dplyr)
+```
+
+```{r}
+netcdf.file <- "data/d18O_precip_mon_1871_2011.nc"
+
+F_yr <- 1958
+L_yr <- 2011
+years <- seq(F_yr, L_yr)
+ext <- extent(-180, 180, -90, 0) #tas extent (lon_min, lon_max, lat_min, lat_max)
+#ext <- extent(0, 180, -90, 0) #SH extent
+```
+
+```{r}
+nc <- ncdf4::nc_open(netcdf.file)
+
+#select the variable
+var.name <- names(nc[['var']])[1] #be sure this is the value you want
+
+summary(nc$dim$lon$vals) #if longitude is 0-360 needs to be rotated
+tunits <- ncdf4::ncatt_get(nc, "time", "units")
+print(tunits)
+
+ncdf4::nc_close(nc)
+```
+
+Rotate because the extent is 0-360 not 0-180 (takes a while)
+```{r}
+dat <- rotate(brick(netcdf.file, varname= var.name))
+```
+
+Crop to spatial extent for faster processessing
+```{r}
+datC <- crop(dat, ext)
+```
+
+```{r}
+sel_y <- names(datC)[substr(names(datC), 2, 5) %in% years] 
+#use that index to subset the raster brick
+datY <- subset(datC, sel_y, value=T)
+tail(names(datY), 30) 
+```
+
+Read in parameter data
+Find top/bottom 10%
+Composite
+
+
+
+
+
+
